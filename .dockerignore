@@ -1,0 +1,19 @@
+# Excluir todo lo del gitignore también de la imagen de Docker
+node_modules/
+*.db
+*.sqlite
+database/
+public/img/prod-*
+npm-debug.log*
+
+# Archivos de git y de entorno
+.git
+.gitignore
+.dockerignore
+.env
+
+# Archivos de sistema y editores
+.DS_Store
+.vscode/
+.idea/
+.agents/

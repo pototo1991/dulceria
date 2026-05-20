@@ -1,0 +1,25 @@
+# Dependencias de Node
+node_modules/
+
+# Archivos de la Base de Datos SQLite (Ignorar BD locales para no sobreescribir ni exponer datos)
+*.db
+*.sqlite
+database/
+
+# Imágenes subidas por usuarios (mantener carpeta pero ignorar su contenido)
+public/img/prod-*
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Variables de entorno locales
+.env
+.env.local
+
+# Archivos del sistema y de editores de código (IDEs)
+.DS_Store
+.vscode/
+.idea/
+.agents/

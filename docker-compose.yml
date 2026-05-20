@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - dulceria_db_data:/app/database
+      - dulceria_uploaded_images:/app/public/img
+    environment:
+      - NODE_ENV=production
+      - JWT_SECRET=super_secret_jwt_key_dulceria_123
+
+volumes:
+  dulceria_db_data:
+  dulceria_uploaded_images:
