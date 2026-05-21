@@ -36,6 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const prodNombreInput = document.getElementById('prod-nombre');
   const prodPrecioInput = document.getElementById('prod-precio');
   const prodCategoriaSelect = document.getElementById('prod-categoria');
+  const prodDescripcionTextarea = document.getElementById('prod-descripcion');
+  const prodImagenInput = document.getElementById('prod-imagen');
   // Utilidad para formatear precio a $xxx.xxx
   function formatPrecio(value) {
     if (value === null || value === undefined || value === '') return '';

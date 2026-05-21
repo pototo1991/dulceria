@@ -20,7 +20,16 @@ app.get('/admin.html', (req, res) => {
 });
 
 // Archivos estáticos (CSS, JS, imágenes del public)
-app.use(express.static(path.join(__dirname, '../public')));
+// En desarrollo se deshabilita el caché para que los cambios se reflejen al instante
+const staticOptions = process.env.NODE_ENV === 'production'
+  ? {}
+  : { setHeaders: (res, filePath) => {
+      if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      }
+    }
+  };
+app.use(express.static(path.join(__dirname, '../public'), staticOptions));
 
 // Rutas de API
 app.use('/api', apiRoutes);
