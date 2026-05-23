@@ -9,6 +9,9 @@ database/
 # Imágenes subidas por usuarios (mantener carpeta pero ignorar su contenido)
 public/img/prod-*
 
+# Catálogo PDF subido por el administrador
+public/pdf/catalogo.pdf
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
@@ -23,3 +26,4 @@ yarn-error.log*
 .vscode/
 .idea/
 .agents/
+*.Identifier

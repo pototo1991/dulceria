@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   let csrfToken = '';
   let products = [];
+  let pollingInterval = null;
 
   // Elementos DOM de Autenticación
   const loginModal = document.getElementById('login-modal');
@@ -13,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabBtnProductos = document.getElementById('tab-btn-productos');
   const tabBtnPedidos = document.getElementById('tab-btn-pedidos');
   const tabBtnClientes = document.getElementById('tab-btn-clientes');
+  const pedidosBadge = document.getElementById('pedidos-badge');
 
   const tabProductos = document.getElementById('tab-productos');
   const tabPedidos = document.getElementById('tab-pedidos');
@@ -30,6 +32,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalTitle = document.getElementById('modal-title');
   const btnAddProduct = document.getElementById('btn-add-product');
   const imgPreview = document.getElementById('img-preview');
+
+  // Catálogo PDF
+  const catalogFileInput = document.getElementById('catalog-file-input');
+  const btnUploadCatalogTrigger = document.getElementById('btn-upload-catalog-trigger');
 
   // Campos de formulario de Producto
   const prodIdInput = document.getElementById('prod-id');
@@ -90,6 +96,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupModalListeners();
     setupLoginFormListener();
     setupProductFormListener();
+    setupCatalogListeners();
   }
 
   // Obtener Token CSRF
@@ -135,6 +142,11 @@ document.addEventListener('DOMContentLoaded', () => {
     cargarProductos();
     cargarPedidos();
     cargarClientes();
+
+    // Iniciar polling de pedidos cada 10 segundos
+    if (!pollingInterval) {
+      pollingInterval = setInterval(cargarPedidos, 10000);
+    }
   }
 
   // Configurar envío del login de administrador
@@ -383,15 +395,25 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
-    prodImagenInput.addEventListener('change', (e) => {
+    prodImagenInput.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          imgPreview.src = event.target.result;
+        try {
+          // Procesar la imagen en tiempo real para mostrar la vista previa real que se subirá al servidor
+          const processedBlob = await ImageProcessor.processImage(file, 800);
+          const previewUrl = URL.createObjectURL(processedBlob);
+          imgPreview.src = previewUrl;
           imgPreview.classList.remove('hidden');
-        };
-        reader.readAsDataURL(file);
+        } catch (err) {
+          console.error("Error procesando imagen para vista previa:", err);
+          // Fallback en caso de error
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            imgPreview.src = event.target.result;
+            imgPreview.classList.remove('hidden');
+          };
+          reader.readAsDataURL(file);
+        }
       } else {
         imgPreview.src = '';
         imgPreview.classList.add('hidden');
@@ -453,8 +475,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // Optimizar imagen en el cliente si hay archivo
       if (file) {
         try {
-          // Llama al ImageProcessor de image-processor.js para convertir a WebP y redimensionar a 800x800 px
-          const processedBlob = await ImageProcessor.processImage(file, 800, 800);
+          // Llama al ImageProcessor de image-processor.js para convertir a WebP y redimensionar (preservando ratio)
+          const processedBlob = await ImageProcessor.processImage(file, 800);
           formData.append('imagen', processedBlob, 'imagen.webp');
         } catch (err) {
           console.error("Error optimizando imagen:", err);
@@ -497,6 +519,15 @@ document.addEventListener('DOMContentLoaded', () => {
       if (res.ok) {
         const orders = await res.json();
         renderPedidosTable(orders);
+
+        // Contar pedidos pendientes y actualizar el badge
+        const pendientesCount = orders.filter(o => o.estado === 'Pendiente').length;
+        if (pendientesCount > 0) {
+          pedidosBadge.textContent = pendientesCount;
+          pedidosBadge.classList.remove('hidden');
+        } else {
+          pedidosBadge.classList.add('hidden');
+        }
       }
     } catch (err) {
       console.error('Error al cargar pedidos:', err);
@@ -639,5 +670,97 @@ document.addEventListener('DOMContentLoaded', () => {
 
       clientesTbody.appendChild(tr);
     });
+  }
+
+  // Notificación tipo Toast Glassmorphic
+  function showToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `fixed bottom-6 left-6 z-50 p-4 rounded-2xl shadow-xl backdrop-blur-md transition-all duration-500 transform translate-y-12 opacity-0 border ${
+      type === 'success' 
+        ? 'bg-emerald-500/80 border-emerald-400 text-white' 
+        : 'bg-dulce-coral/80 border-pink-400 text-white'
+    }`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    // Animación de entrada
+    setTimeout(() => {
+      toast.classList.remove('translate-y-12', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+    }, 50);
+
+    // Animación de salida y remoción
+    setTimeout(() => {
+      toast.classList.remove('translate-y-0', 'opacity-100');
+      toast.classList.add('translate-y-12', 'opacity-0');
+      setTimeout(() => {
+        toast.remove();
+      }, 500);
+    }, 3000);
+  }
+
+  // Listener para subida de Catálogo PDF
+  function setupCatalogListeners() {
+    if (btnUploadCatalogTrigger && catalogFileInput) {
+      btnUploadCatalogTrigger.addEventListener('click', () => {
+        catalogFileInput.click();
+      });
+
+      catalogFileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (file.type !== 'application/pdf') {
+          showToast('Solo se permiten archivos PDF.', 'error');
+          catalogFileInput.value = '';
+          return;
+        }
+
+        // Límite de 10MB
+        if (file.size > 10 * 1024 * 1024) {
+          showToast('El archivo supera el límite de 10MB.', 'error');
+          catalogFileInput.value = '';
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('catalogo', file);
+
+        btnUploadCatalogTrigger.disabled = true;
+        btnUploadCatalogTrigger.textContent = 'Subiendo... ⏳';
+
+        try {
+          const res = await fetch('/api/catalogo', {
+            method: 'POST',
+            headers: {
+              'X-CSRF-Token': csrfToken
+            },
+            body: formData
+          });
+
+          if (res.ok) {
+            showToast('¡Catálogo PDF subido exitosamente!', 'success');
+          } else {
+            const data = await res.json();
+            showToast(data.error || 'Error al subir el catálogo.', 'error');
+          }
+        } catch (err) {
+          console.error('Error al subir catálogo:', err);
+          showToast('Error de conexión al subir catálogo.', 'error');
+        } finally {
+          catalogFileInput.value = '';
+          btnUploadCatalogTrigger.disabled = false;
+          btnUploadCatalogTrigger.replaceChildren();
+          
+          const svgIcon = document.createRange().createContextualFragment(
+            `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>`
+          );
+          const spanText = document.createElement('span');
+          spanText.textContent = 'Subir Catálogo PDF';
+          btnUploadCatalogTrigger.appendChild(svgIcon);
+          btnUploadCatalogTrigger.appendChild(spanText);
+        }
+      });
+    }
   }
 });

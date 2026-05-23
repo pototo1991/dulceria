@@ -26,6 +26,32 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage: storage });
 
+const pdfDir = path.join(__dirname, '../../public/pdf/');
+if (!fs.existsSync(pdfDir)) {
+  fs.mkdirSync(pdfDir, { recursive: true });
+}
+
+const pdfStorage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, pdfDir);
+  },
+  filename: function (req, file, cb) {
+    cb(null, 'catalogo.pdf');
+  }
+});
+
+const uploadPdf = multer({
+  storage: pdfStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // Límite de 10MB
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos PDF.'));
+    }
+  }
+});
+
 // --- CSRF TOKEN ENDPOINT ---
 router.get('/csrf-token', (req, res) => {
   const cookies = parseCookies(req.headers.cookie);
@@ -206,10 +232,32 @@ router.put('/productos/:id', verifyToken, verifyAdmin, verifyCSRF, upload.single
 });
 
 // Eliminar un producto (solo Admin, protegido por CSRF)
+// También elimina el archivo de imagen del disco para evitar archivos huérfanos.
 router.delete('/productos/:id', verifyToken, verifyAdmin, verifyCSRF, (req, res) => {
-  db.run('DELETE FROM productos WHERE id = ?', [req.params.id], function(err) {
-    if (err) return res.status(500).json({ error: 'Error al eliminar el producto.' });
-    res.json({ message: 'Producto eliminado exitosamente.' });
+  const id = req.params.id;
+
+  // Primero obtener la ruta de imagen antes de borrar el registro
+  db.get('SELECT imagen_path FROM productos WHERE id = ?', [id], (err, row) => {
+    if (err) return res.status(500).json({ error: 'Error al buscar el producto.' });
+
+    db.run('DELETE FROM productos WHERE id = ?', [id], function(err) {
+      if (err) return res.status(500).json({ error: 'Error al eliminar el producto.' });
+
+      // Borrar el archivo de imagen del disco si existe y es un archivo subido (prod-*)
+      if (row && row.imagen_path) {
+        const filename = path.basename(row.imagen_path);
+        if (filename.startsWith('prod-')) {
+          const filePath = path.join(imgDir, filename);
+          fs.unlink(filePath, (unlinkErr) => {
+            if (unlinkErr && unlinkErr.code !== 'ENOENT') {
+              console.error('Advertencia: no se pudo borrar la imagen:', filePath, unlinkErr.message);
+            }
+          });
+        }
+      }
+
+      res.json({ message: 'Producto e imagen eliminados exitosamente.' });
+    });
   });
 });
 
@@ -299,23 +347,16 @@ router.post('/pedidos', verifyToken, verifyCSRF, (req, res) => {
         if (err) return res.status(500).json({ error: 'Error al registrar el pedido.' });
 
         const pedidoId = this.lastID;
-        // Asignar puntos de fidelidad: 1 punto por cada $1 gastado
-        const puntosGanados = Math.floor(total);
+        // No se asignan puntos aquí, se asignarán cuando el pedido pase a estar 'Listo'.
+        // Calculamos los puntos estimados (10% de la compra) para informar al cliente.
+        const puntosEstimados = Math.floor(total * 0.1);
 
-        db.run(
-          'UPDATE usuarios SET puntos = puntos + ? WHERE id = ?',
-          [puntosGanados, usuario_id],
-          (err) => {
-            if (err) console.error('Error al actualizar los puntos del usuario', err);
-            
-            res.json({
-              message: 'Pedido realizado con éxito.',
-              pedidoId,
-              puntosGanados,
-              total
-            });
-          }
-        );
+        res.json({
+          message: 'Pedido realizado con éxito.',
+          pedidoId,
+          puntosGanados: puntosEstimados,
+          total
+        });
       }
     );
   });
@@ -351,6 +392,7 @@ router.get('/pedidos', verifyToken, (req, res) => {
 });
 
 // Cambiar estado del pedido (solo Admin, protegido por CSRF)
+// Asigna puntos de fidelidad al cliente (10% del total de la compra) si el pedido pasa a estar "Listo"
 router.patch('/pedidos/:id/estado', verifyToken, verifyAdmin, verifyCSRF, (req, res) => {
   const id = req.params.id;
   const { estado } = req.body;
@@ -359,14 +401,45 @@ router.patch('/pedidos/:id/estado', verifyToken, verifyAdmin, verifyCSRF, (req, 
     return res.status(400).json({ error: 'El estado es obligatorio.' });
   }
 
-  db.run(
-    'UPDATE pedidos SET estado = ? WHERE id = ?',
-    [estado, id],
-    function (err) {
-      if (err) return res.status(500).json({ error: 'Error al actualizar el estado del pedido.' });
-      res.json({ message: 'Estado del pedido actualizado exitosamente.' });
-    }
-  );
+  // Obtener el pedido actual para verificar si ya estaba listo y obtener el total y usuario_id
+  db.get('SELECT usuario_id, total, estado FROM pedidos WHERE id = ?', [id], (err, order) => {
+    if (err) return res.status(500).json({ error: 'Error al buscar el pedido.' });
+    if (!order) return res.status(404).json({ error: 'Pedido no encontrado.' });
+
+    const yaEraListo = order.estado === 'Listo';
+    const seMarcaComoListo = estado === 'Listo';
+
+    db.serialize(() => {
+      // Actualizar el estado del pedido
+      db.run(
+        'UPDATE pedidos SET estado = ? WHERE id = ?',
+        [estado, id],
+        function (err) {
+          if (err) return res.status(500).json({ error: 'Error al actualizar el estado del pedido.' });
+
+          // Si el pedido pasa a estar "Listo" y no estaba listo antes, sumamos los puntos al cliente (10% de la compra)
+          if (seMarcaComoListo && !yaEraListo) {
+            const puntosGanados = Math.floor(order.total * 0.1);
+            db.run(
+              'UPDATE usuarios SET puntos = puntos + ? WHERE id = ?',
+              [puntosGanados, order.usuario_id],
+              (err) => {
+                if (err) {
+                  console.error('Error al actualizar los puntos del usuario', err);
+                }
+                res.json({ 
+                  message: 'Estado del pedido actualizado y puntos asignados al cliente exitosamente.',
+                  puntosGanados 
+                });
+              }
+            );
+          } else {
+            res.json({ message: 'Estado del pedido actualizado exitosamente.' });
+          }
+        }
+      );
+    });
+  });
 });
 
 // --- CLIENTES (MANTENEDOR ADMIN) ---
@@ -381,6 +454,48 @@ router.get('/clientes', verifyToken, verifyAdmin, (req, res) => {
       res.json(rows);
     }
   );
+});
+
+// --- CATÁLOGO PDF ---
+
+// Subir catálogo PDF (solo Admin, protegido por CSRF)
+router.post('/catalogo', verifyToken, verifyAdmin, verifyCSRF, (req, res) => {
+  uploadPdf.single('catalogo')(req, res, function (err) {
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'El archivo es demasiado grande (máximo 10MB).' });
+      }
+      return res.status(400).json({ error: err.message });
+    } else if (err) {
+      return res.status(400).json({ error: err.message });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'Por favor selecciona un archivo PDF.' });
+    }
+
+    res.json({ message: 'Catálogo subido exitosamente.' });
+  });
+});
+
+// Consultar si existe el catálogo
+router.get('/catalogo/exists', (req, res) => {
+  const filePath = path.join(__dirname, '../../public/pdf/catalogo.pdf');
+  res.json({ exists: fs.existsSync(filePath) });
+});
+
+// Descargar el catálogo PDF con cabeceras seguras
+router.get('/catalogo/download', (req, res) => {
+  const filePath = path.join(__dirname, '../../public/pdf/catalogo.pdf');
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'El catálogo no está disponible.' });
+  }
+
+  res.setHeader('Content-Disposition', 'attachment; filename="catalogo_dulceria.pdf"');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Type', 'application/pdf');
+
+  res.sendFile(filePath);
 });
 
 module.exports = router;

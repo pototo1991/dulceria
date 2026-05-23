@@ -46,9 +46,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeOrders = document.getElementById('close-orders');
   const ordersListContainer = document.getElementById('orders-list-container');
 
+  // Elementos de Detalle de Producto
+  const detalleModal = document.getElementById('detalle-modal');
+  const detalleContent = document.getElementById('detalle-content');
+  const closeDetalle = document.getElementById('close-detalle');
+  const btnDetalleAdd = document.getElementById('btn-detalle-add');
+
+  // Catálogo PDF
+  const btnDownloadCatalog = document.getElementById('btn-download-catalog');
+
   let isRegisterMode = false;
   let currentUser = null;
   let currentOfertaProduct = null;
+  let currentDetailProduct = null;
 
   // Utilidad para formatear precio a $xxx.xxx
   function formatPrecio(value) {
@@ -97,10 +107,12 @@ document.addEventListener('DOMContentLoaded', () => {
     await checkSession();
     await fetchProducts();
     await checkOfertaDelDia();
+    await checkCatalog();
     setupFilters();
     setupAuthListeners();
     setupCartListeners();
     setupOrdersListeners();
+    setupDetalleListeners();
     cargarCarritoDesdeStorage();
   }
 
@@ -348,19 +360,23 @@ document.addEventListener('DOMContentLoaded', () => {
       const delay = index * 0.05;
       
       const imgEl = el('img', {
-        class: 'w-full h-full object-cover transition-transform duration-500 group-hover:scale-110',
+        class: 'w-full h-full object-contain transition-transform duration-500 group-hover:scale-105',
         src: p.imagen_path || 'https://via.placeholder.com/400x400?text=Dulcería',
         alt: p.nombre
       });
       
       const card = el('div', {
-        class: 'glass-card overflow-hidden group fade-up flex flex-col',
-        style: `animation-delay: ${delay}s`
+        class: 'glass-card overflow-hidden group fade-up flex flex-col cursor-pointer',
+        style: `animation-delay: ${delay}s`,
+        onClick: (e) => {
+          if (e.target.closest('button')) return;
+          abrirDetalleModal(p);
+        }
       }, [
-        // Imagen container
-        el('div', { class: 'relative h-48 overflow-hidden' }, [
+        // Contenedor cuadrado: muestra la imagen completa sin recortar
+        el('div', { class: 'relative w-full aspect-square overflow-hidden bg-pink-50/60 flex items-center justify-center p-4' }, [
           imgEl,
-          el('div', { class: 'absolute inset-0 bg-black/10 group-hover:bg-black/0 transition-colors' })
+          el('div', { class: 'absolute inset-0 bg-black/5 group-hover:bg-black/0 transition-colors' })
         ]),
         // Contenido de tarjeta
         el('div', { class: 'p-6 flex flex-col flex-grow' }, [
@@ -485,6 +501,69 @@ document.addEventListener('DOMContentLoaded', () => {
       closeOferta.click();
     }
   });
+
+  // --- LÓGICA DEL MODAL DE DETALLE ---
+  function setupDetalleListeners() {
+    closeDetalle.addEventListener('click', cerrarDetalleModal);
+    
+    detalleModal.addEventListener('click', (e) => {
+      if (e.target === detalleModal) {
+        cerrarDetalleModal();
+      }
+    });
+
+    btnDetalleAdd.addEventListener('click', () => {
+      if (currentDetailProduct) {
+        agregarAlCarrito(currentDetailProduct);
+        cerrarDetalleModal();
+      }
+    });
+  }
+
+  function abrirDetalleModal(producto) {
+    currentDetailProduct = producto;
+    
+    document.getElementById('detalle-img').src = producto.imagen_path || 'https://via.placeholder.com/400x400?text=Dulcería';
+    document.getElementById('detalle-img').alt = producto.nombre;
+    document.getElementById('detalle-nombre').textContent = producto.nombre;
+    
+    let catText = producto.categoria;
+    if (producto.categoria === 'helados') catText = '🍦 Helados';
+    else if (producto.categoria === 'cafes') catText = '☕ Cafés';
+    else if (producto.categoria === 'preparaciones') catText = '🍰 Preparaciones';
+    
+    document.getElementById('detalle-categoria').textContent = catText;
+    document.getElementById('detalle-desc').textContent = producto.descripcion || 'Este delicioso producto no tiene descripción aún.';
+    
+    const precioOriginalEl = document.getElementById('detalle-precio-original');
+    const precioEl = document.getElementById('detalle-precio');
+    
+    if (producto.es_oferta_del_dia === 1 && producto.precio_oferta) {
+      precioOriginalEl.textContent = formatPrecio(producto.precio);
+      precioOriginalEl.classList.remove('hidden');
+      precioEl.textContent = formatPrecio(producto.precio_oferta);
+    } else {
+      precioOriginalEl.classList.add('hidden');
+      precioEl.textContent = formatPrecio(producto.precio);
+    }
+    
+    detalleModal.classList.remove('hidden');
+    setTimeout(() => {
+      detalleModal.classList.remove('opacity-0');
+      detalleContent.classList.remove('scale-95');
+      detalleContent.classList.add('scale-100');
+    }, 50);
+  }
+
+  function cerrarDetalleModal() {
+    detalleModal.classList.add('opacity-0');
+    detalleContent.classList.remove('scale-100');
+    detalleContent.classList.add('scale-95');
+    
+    setTimeout(() => {
+      detalleModal.classList.add('hidden');
+    }, 300);
+  }
 
   // --- LÓGICA DEL CARRITO DE COMPRAS ---
 
@@ -714,7 +793,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
 
       if (res.ok) {
-        orderSuccessMsg.textContent = `¡Pedido #${data.pedidoId} creado! Ganaste ${data.puntosGanados} puntos.`;
+        orderSuccessMsg.textContent = `¡Pedido #${data.pedidoId} creado! Acumularás ${data.puntosGanados} puntos cuando esté listo.`;
         orderSuccessMsg.classList.remove('hidden');
         
         // Limpiar Carrito
@@ -789,6 +868,7 @@ document.addEventListener('DOMContentLoaded', () => {
         );
       }
     } catch (err) {
+      console.error('Error al cargar mis pedidos:', err);
       ordersListContainer.replaceChildren(
         el('p', { class: 'text-center text-red-500 py-6 text-sm', text: 'Error de conexión.' })
       );
@@ -832,8 +912,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // Crear lista de productos pedidos
       const productListElements = items.map(item => {
         return el('li', { class: 'text-xs text-gray-600 flex justify-between' }, [
-          el('span', {}, `${item.nombre} x${item.cantidad}`),
-          el('span', { class: 'font-semibold' }, `${formatPrecio(item.precio * item.cantidad)}`)
+          el('span', { text: `${item.nombre} x${item.cantidad}` }),
+          el('span', { class: 'font-semibold', text: formatPrecio(item.precio * item.cantidad) })
         ]);
       });
 
@@ -857,5 +937,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
       ordersListContainer.appendChild(orderCard);
     });
+  }
+
+  // Verificar si existe el catálogo PDF en el servidor
+  async function checkCatalog() {
+    if (!btnDownloadCatalog) return;
+    try {
+      const res = await fetch('/api/catalogo/exists');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.exists) {
+          btnDownloadCatalog.classList.remove('hidden');
+        } else {
+          btnDownloadCatalog.classList.add('hidden');
+        }
+      }
+    } catch (err) {
+      console.error('Error al verificar existencia del catálogo:', err);
+    }
   }
 });

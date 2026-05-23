@@ -20,16 +20,33 @@ app.get('/admin.html', (req, res) => {
 });
 
 // Archivos estáticos (CSS, JS, imágenes del public)
-// En desarrollo se deshabilita el caché para que los cambios se reflejen al instante
-const staticOptions = process.env.NODE_ENV === 'production'
-  ? {}
-  : { setHeaders: (res, filePath) => {
+// Las imágenes de productos siempre se sirven sin caché para reflejar cambios inmediatamente.
+// Los assets estáticos como CSS/JS solo omiten caché en desarrollo.
+const staticOptions = {
+  setHeaders: (res, filePath) => {
+    // Imágenes de productos y catálogo PDF: nunca cachear (el admin puede actualizarlas)
+    if (filePath.includes('/img/prod-') || filePath.includes('/pdf/catalogo.pdf')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    } else if (process.env.NODE_ENV !== 'production') {
+      // En desarrollo, tampoco cachear CSS ni JS
       if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
         res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
       }
     }
-  };
+  }
+};
 app.use(express.static(path.join(__dirname, '../public'), staticOptions));
+
+// Middleware: las respuestas de la API nunca deben ser cacheadas por el navegador.
+// Esto asegura que cambios de productos (imágenes, precios, etc.) se reflejen inmediatamente.
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+});
 
 // Rutas de API
 app.use('/api', apiRoutes);

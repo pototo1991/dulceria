@@ -10,7 +10,10 @@
     @apply bg-white/80 backdrop-blur-lg border border-white/50 shadow-2xl rounded-3xl;
   }
   .btn-primary {
-    @apply bg-dulce-cyan text-white font-bold py-2 px-6 rounded-full hover:bg-[#0098AB] transition-colors shadow-md hover:shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 duration-200;
+    @apply bg-dulce-cyan text-white font-bold py-2 px-6 rounded-full hover:bg-[#00B0AE] transition-colors shadow-md hover:shadow-lg transform hover:-translate-y-0.5 active:translate-y-0 duration-200;
+  }
+  .btn-secondary {
+    @apply bg-white/40 backdrop-blur-sm border border-pink-200 text-gray-700 font-bold py-2 px-6 rounded-full hover:bg-dulce-pink hover:text-white transition-all shadow-sm hover:shadow-md transform hover:-translate-y-0.5 active:translate-y-0 duration-200;
   }
   .input-field {
     @apply w-full px-4 py-2 border border-pink-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-dulce-cyan focus:border-transparent bg-white/80;
@@ -19,9 +22,15 @@
     text-shadow: 
       0 0 6px #ffffff,
       0 0 12px #ffffff,
-      0 0 18px rgba(0, 210, 196, 0.5),
-      0 0 28px rgba(0, 210, 196, 0.3);
+      0 0 18px rgba(0, 202, 198, 0.5),
+      0 0 28px rgba(0, 202, 198, 0.3);
   }
+}
+
+.logo-mimetizado {
+  border-radius: 2.5rem;
+  mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 70%, rgba(0,0,0,0) 100%);
+  -webkit-mask-image: radial-gradient(ellipse at center, rgba(0,0,0,1) 70%, rgba(0,0,0,0) 100%);
 }
 
 body {

@@ -4,6 +4,7 @@ node_modules/
 *.sqlite
 database/
 public/img/prod-*
+public/pdf/catalogo.pdf
 npm-debug.log*
 
 # Archivos de git y de entorno
@@ -17,3 +18,4 @@ npm-debug.log*
 .vscode/
 .idea/
 .agents/
+*.Identifier

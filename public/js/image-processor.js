@@ -1,6 +1,8 @@
-// Utilidad para redimensionar y convertir imágenes usando Canvas (Recorte central exacto a 800x800 px)
+// Utilidad para redimensionar y convertir imágenes usando Canvas.
+// Redimensiona la imagen para que encaje completa dentro de un lienzo de 800x800 px (modo "contain"),
+// rellenando los bordes sobrantes con fondo transparente para no recortar ni deformar la imagen.
 const ImageProcessor = {
-  processImage: function(file, targetWidth = 800, targetHeight = 800) {
+  processImage: function(file, targetSize = 800) {
     return new Promise((resolve, reject) => {
       if (!file) return resolve(null);
       
@@ -13,41 +15,38 @@ const ImageProcessor = {
         
         img.onload = () => {
           const canvas = document.createElement('canvas');
-          canvas.width = targetWidth;
-          canvas.height = targetHeight;
-          
+          canvas.width = targetSize;
+          canvas.height = targetSize;
           const ctx = canvas.getContext('2d');
           
-          // Lógica de recorte central (center-crop) para mantener aspecto cuadrado de 800x800 px
-          let srcX = 0;
-          let srcY = 0;
-          let srcWidth = img.width;
-          let srcHeight = img.height;
+          // Limpiar canvas (fondo transparente)
+          ctx.clearRect(0, 0, targetSize, targetSize);
           
-          const imgRatio = img.width / img.height;
-          const targetRatio = targetWidth / targetHeight;
+          let dx = 0;
+          let dy = 0;
+          let dWidth = targetSize;
+          let dHeight = targetSize;
           
-          if (imgRatio > targetRatio) {
-            // La imagen de origen es más ancha: se recortan los laterales
-            srcWidth = img.height * targetRatio;
-            srcX = (img.width - srcWidth) / 2;
-          } else if (imgRatio < targetRatio) {
-            // La imagen de origen es más alta: se recortan la parte superior e inferior
-            srcHeight = img.width / targetRatio;
-            srcY = (img.height - srcHeight) / 2;
+          // Calcular dimensiones en modo "contain" (mantener relación de aspecto dentro del cuadrado)
+          if (img.width > img.height) {
+            dHeight = Math.round(img.height * (targetSize / img.width));
+            dy = Math.round((targetSize - dHeight) / 2);
+          } else if (img.height > img.width) {
+            dWidth = Math.round(img.width * (targetSize / img.height));
+            dx = Math.round((targetSize - dWidth) / 2);
           }
           
-          // Dibujar la imagen recortada en el canvas
-          ctx.drawImage(img, srcX, srcY, srcWidth, srcHeight, 0, 0, targetWidth, targetHeight);
+          // Dibujar la imagen escalada y centrada
+          ctx.drawImage(img, 0, 0, img.width, img.height, dx, dy, dWidth, dHeight);
           
           // Convertir a blob WebP
           canvas.toBlob((blob) => {
             if (blob) {
               resolve(blob);
             } else {
-              reject(new Error("No se pudo generar el Blob de imagen WebP"));
+              reject(new Error('No se pudo generar el Blob de imagen WebP'));
             }
-          }, 'image/webp', 0.8); // 80% calidad
+          }, 'image/webp', 0.85); // 85% calidad
         };
         
         img.onerror = (err) => reject(err);

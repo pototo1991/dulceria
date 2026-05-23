@@ -6,8 +6,13 @@ services:
     ports:
       - "3000:3000"
     volumes:
+      # Volúmenes con nombre (persistencia de datos)
       - dulceria_db_data:/app/database
       - dulceria_uploaded_images:/app/public/img
+      # Bind mounts: cambios en el host se reflejan inmediatamente en el contenedor
+      - ./views:/app/views
+      - ./public/css:/app/public/css
+      - ./public/js:/app/public/js
     environment:
       - NODE_ENV=production
       - JWT_SECRET=super_secret_jwt_key_dulceria_123
